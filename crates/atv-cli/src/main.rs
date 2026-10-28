@@ -40,7 +40,8 @@ fn usage() -> ! {
            --server-id <UUID>             Unique Server UUID (default: auto-detected hardware UUID)\n\
            --pin <PIN>                    4-digit pairing PIN (default: 1111)\n\
            --random-pin                   Print a new random PIN for every pairing attempt instead of --pin\n\
-           --require-pairing              Admit only phones that paired with this server\n\
+           --require-pairing              Admit only phones that paired with this server; use with --no-ui,\n\
+                                          the debug web UI presses buttons without pairing\n\
            --pairing-dir <DIR>            Directory for the paired-phone list (default: memory only)\n\
            --ip <IPV4>                    Local IPv4 to advertise (auto-detected if omitted)\n\
            --mouse                        Initial mode: Trackpad mouse (default on macOS)\n\
