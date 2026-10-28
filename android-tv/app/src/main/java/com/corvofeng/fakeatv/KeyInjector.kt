@@ -23,7 +23,13 @@ object KeyInjector {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val inputManagerClass = Class.forName("android.hardware.input.InputManager")
+        // Android 14 moved injection to InputManagerGlobal; InputManager.getInstance() there needs
+        // an Application, which this process does not have.
+        val inputManagerClass = try {
+            Class.forName("android.hardware.input.InputManagerGlobal")
+        } catch (_: ClassNotFoundException) {
+            Class.forName("android.hardware.input.InputManager")
+        }
         val inputManager = inputManagerClass.getDeclaredMethod("getInstance").invoke(null)
         val inject = inputManagerClass.getMethod(
             "injectInputEvent", InputEvent::class.java, Int::class.javaPrimitiveType
