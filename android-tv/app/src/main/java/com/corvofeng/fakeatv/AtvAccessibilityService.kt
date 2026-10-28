@@ -71,7 +71,7 @@ class AtvAccessibilityService : AccessibilityService() {
         }
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val textFocusHandler = Handler(Looper.getMainLooper())
 
     // Last text-field state the core accepted; touched only on the main thread.
     private var reportedTextFocus = false
@@ -110,7 +110,7 @@ class AtvAccessibilityService : AccessibilityService() {
 
     /** Report the text-field state again, e.g. to a native server that just started. */
     fun resendTextFocus() {
-        mainHandler.post { updateTextFocus(force = true) }
+        textFocusHandler.post { updateTextFocus(force = true) }
     }
 
     /**
