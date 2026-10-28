@@ -6,11 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.os.Build
+import android.os.Bundle
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 
 class AtvAccessibilityService : AccessibilityService() {
 
@@ -67,8 +69,100 @@ class AtvAccessibilityService : AccessibilityService() {
         }
     }
 
+    // Last text-field state reported to the core; touched only on the main thread.
+    private var reportedTextFocus = false
+    private var reportedText = ""
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // No-op
+        when (event?.eventType) {
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> updateTextFocus()
+        }
+    }
+
+    /**
+     * A text field counts as focused when the on-screen keyboard (IME) window is shown
+     * and the input-focused node is editable. Changes go to the core, which tells the
+     * phone to raise or drop its keyboard.
+     */
+    private fun updateTextFocus() {
+        val field = if (isImeShown()) findEditableFocus() else null
+        val focused = field != null
+        val text = field?.let { fieldText(it) } ?: ""
+        if (focused == reportedTextFocus && text == reportedText) return
+        reportedTextFocus = focused
+        reportedText = text
+        Log.i(TAG, "Text field focused=$focused (${text.length} chars)")
+        try {
+            AtvNative.nativeSetTextFocus(focused, text)
+        } catch (e: Throwable) {
+            // UnsatisfiedLinkError when the native library failed to load.
+            Log.w(TAG, "nativeSetTextFocus failed", e)
+        }
+    }
+
+    private fun isImeShown(): Boolean = try {
+        windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun findEditableFocus(): AccessibilityNodeInfo? =
+        findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+
+    // An empty field reports its hint as text.
+    private fun fieldText(field: AccessibilityNodeInfo): String =
+        if (field.isShowingHintText) "" else field.text?.toString() ?: ""
+
+    /** Apply one edit typed on the phone's keyboard to the focused field. */
+    @Synchronized
+    fun handleTextOp(kind: String, text: String, count: Int) {
+        val field = findEditableFocus()
+        if (field == null) {
+            Log.w(TAG, "Text $kind dropped: no editable field in focus")
+            return
+        }
+        val current = fieldText(field)
+        when (kind) {
+            "insert" -> insertText(field, current, text)
+            "delete" -> setFieldText(field, dropLastChars(current, count))
+            "replace" -> setFieldText(field, text)
+            else -> Log.w(TAG, "Unknown text op: $kind")
+        }
+    }
+
+    // Return arrives as "\n": the text around it goes into the field and each
+    // newline becomes an Enter press, which starts the search in leanback search bars.
+    private fun insertText(field: AccessibilityNodeInfo, current: String, text: String) {
+        val lines = text.split('\n')
+        var buffer = current
+        lines.forEachIndexed { index, line ->
+            if (line.isNotEmpty()) {
+                buffer += line
+                setFieldText(field, buffer)
+            }
+            if (index < lines.lastIndex) {
+                KeyDispatcher.dispatchButton("enter")
+            }
+        }
+    }
+
+    // Drops UTF-16 units without leaving half of a surrogate pair behind.
+    private fun dropLastChars(text: String, count: Int): String {
+        var end = (text.length - count).coerceAtLeast(0)
+        if (end > 0 && Character.isHighSurrogate(text[end - 1])) end--
+        return text.substring(0, end)
+    }
+
+    private fun setFieldText(field: AccessibilityNodeInfo, value: String) {
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
+        }
+        if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+            Log.w(TAG, "ACTION_SET_TEXT failed")
+        }
     }
 
     override fun onInterrupt() {
