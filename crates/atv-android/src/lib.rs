@@ -300,20 +300,28 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeSetTrackpadMod
     }
 }
 
+/// Returns false when no server is running, so the caller reports the state again later.
 #[no_mangle]
 pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeSetTextFocus(
     mut env: JNIEnv,
     _class: JClass,
     focused: jboolean,
+    field: JString,
     text: JString,
-) {
+    from_phone: jboolean,
+) -> jboolean {
+    let field: String = env.get_string(&field).map(Into::into).unwrap_or_default();
     let text: String = env.get_string(&text).map(Into::into).unwrap_or_default();
     let state_guard = match SERVER_STATE.lock() {
         Ok(guard) => guard,
-        Err(_) => return,
+        Err(_) => return JNI_FALSE,
     };
-    if let Some(server) = state_guard.as_ref().and_then(|running| running.server.as_ref()) {
-        server.set_text_focus(focused != JNI_FALSE, &text);
+    match state_guard.as_ref().and_then(|running| running.server.as_ref()) {
+        Some(server) => {
+            server.set_text_focus(focused != JNI_FALSE, &field, &text, from_phone != JNI_FALSE);
+            JNI_TRUE
+        }
+        None => JNI_FALSE,
     }
 }
 

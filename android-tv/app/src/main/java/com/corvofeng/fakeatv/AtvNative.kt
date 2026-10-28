@@ -41,6 +41,15 @@ object AtvNative {
     external fun nativeSetTrackpadMode(mode: Int): Boolean
     external fun nativeIsRunning(): Boolean
 
-    /** Report whether an editable field is focused on the TV and its current text. */
-    external fun nativeSetTextFocus(focused: Boolean, text: String)
+    /**
+     * Report whether an editable field is focused on the TV, which one (field is a stable key)
+     * and its current text. fromPhone marks text that only changed because edits from the
+     * phone were applied. Returns false when the server is not running.
+     */
+    external fun nativeSetTextFocus(
+        focused: Boolean,
+        field: String,
+        text: String,
+        fromPhone: Boolean
+    ): Boolean
 }

@@ -130,6 +130,8 @@ fn resolve<'a>(objects: &'a [Plist], value: &'a Plist) -> Option<&'a Plist> {
 
 struct HubState {
     focused: bool,
+    /// Host-chosen identity of the focused field.
+    field: String,
     text: String,
     session_uuid: [u8; 16],
     clients: HashMap<u64, UnboundedSender<TextInputPush>>,
@@ -145,6 +147,7 @@ impl TextInputHub {
         Arc::new(Self {
             state: Mutex::new(HubState {
                 focused: false,
+                field: String::new(),
                 text: String::new(),
                 session_uuid: [0; 16],
                 clients: HashMap::new(),
@@ -156,27 +159,46 @@ impl TextInputHub {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Record whether a text field is focused and its current text. When the
-    /// focus flag flips, every connection that sent `_tiStart` gets a push.
-    /// A text change alone is not pushed: it is our own edit coming back.
-    pub fn set_focus(&self, focused: bool, text: &str) {
+    /// Record the focused field (`field` is any stable identity the host
+    /// picks) and its text, and tell every connection that sent `_tiStart`.
+    ///
+    /// Gaining focus pushes `_tiStarted`, losing it pushes `_tiStopped`. A
+    /// different field, or new text while the same field stays focused, pushes
+    /// `_tiStopped` then `_tiStarted` with a fresh session so the phone reloads
+    /// the document. `from_phone` marks text that only changed because the
+    /// host applied [`TextOp`]s from the phone: it is recorded silently, since
+    /// the phone already shows it.
+    pub fn set_focus(&self, focused: bool, field: &str, text: &str, from_phone: bool) {
         let mut state = self.lock();
+        let was_focused = state.focused;
+        let reload = was_focused
+            && focused
+            && (state.field != field || (state.text != text && !from_phone));
+        state.focused = focused;
+        state.field = field.to_string();
         state.text = text.to_string();
-        if state.focused == focused {
+
+        let mut pushes = Vec::new();
+        if was_focused && (!focused || reload) {
+            pushes.push(TextInputPush::Stopped);
+        }
+        if focused && (!was_focused || reload) {
+            state.session_uuid = rand::random();
+            pushes.push(TextInputPush::Started(build_document_state(
+                &state.session_uuid,
+                &state.text,
+            )));
+        }
+        if pushes.is_empty() {
             return;
         }
-        state.focused = focused;
-        let push = if focused {
-            state.session_uuid = rand::random();
-            TextInputPush::Started(build_document_state(&state.session_uuid, &state.text))
-        } else {
-            TextInputPush::Stopped
-        };
         info!(
-            "text input focus={focused}, notifying {} connection(s)",
+            "text input focus={focused} reload={reload}, notifying {} connection(s)",
             state.clients.len()
         );
-        state.clients.retain(|_, tx| tx.send(push.clone()).is_ok());
+        state
+            .clients
+            .retain(|_, tx| pushes.iter().all(|push| tx.send(push.clone()).is_ok()));
     }
 
     /// A connection sent `_tiStart`: remember it and return the `_tiD` to
@@ -198,7 +220,7 @@ impl TextInputHub {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
+    use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel, UnboundedReceiver};
 
     // Real `_tiC` payloads from an iPhone, recorded by the keyboard probe.
     const TIC_INSERT_CYRILLIC: &[u8] = include_bytes!("../testdata/tic_insert_cyrillic.bplist");
@@ -211,18 +233,31 @@ mod tests {
         Plist::from_reader(std::io::Cursor::new(bytes)).unwrap()
     }
 
-    fn context_before_input(tid: &[u8]) -> String {
+    /// The session UUID and `contextBeforeInput` of a `_tiD`.
+    fn document(tid: &[u8]) -> (Vec<u8>, String) {
         let archive = parse(tid);
         let archive = archive.as_dictionary().unwrap();
         let objects = archive["$objects"].as_array().unwrap();
         let top = archive["$top"].as_dictionary().unwrap();
+        let uuid = resolve(objects, &top["sessionUUID"]).unwrap().as_data().unwrap();
         let doc = resolve(objects, &top["documentState"]).unwrap().as_dictionary().unwrap();
         let doc_st = resolve(objects, &doc["docSt"]).unwrap().as_dictionary().unwrap();
-        resolve(objects, &doc_st["contextBeforeInput"])
+        let text = resolve(objects, &doc_st["contextBeforeInput"])
             .unwrap()
             .as_string()
-            .unwrap()
-            .to_string()
+            .unwrap();
+        (uuid.to_vec(), text.to_string())
+    }
+
+    fn context_before_input(tid: &[u8]) -> String {
+        document(tid).1
+    }
+
+    fn expect_started(rx: &mut UnboundedReceiver<TextInputPush>) -> (Vec<u8>, String) {
+        match rx.try_recv() {
+            Ok(TextInputPush::Started(tid)) => document(&tid),
+            other => panic!("expected Started, got {other:?}"),
+        }
     }
 
     #[test]
@@ -276,14 +311,11 @@ mod tests {
 
         // Unfocused: `_tiStart` gets no document, the connection is remembered.
         assert_eq!(hub.subscribe(1, tx), None);
-        hub.set_focus(true, "ab");
-        let TextInputPush::Started(tid) = rx.try_recv().unwrap() else {
-            panic!("expected Started");
-        };
-        assert_eq!(context_before_input(&tid), "ab");
+        hub.set_focus(true, "search", "ab", false);
+        assert_eq!(expect_started(&mut rx).1, "ab");
 
-        // A text change without a focus change is not pushed.
-        hub.set_focus(true, "abc");
+        // Text that changed because of the phone's own edits is not pushed back.
+        hub.set_focus(true, "search", "abc", true);
         assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
 
         // A connection that starts while focused gets the current text.
@@ -291,8 +323,38 @@ mod tests {
         assert_eq!(context_before_input(&tid), "abc");
 
         hub.unsubscribe(2);
-        hub.set_focus(false, "");
+        hub.set_focus(false, "", "", false);
         assert_eq!(rx.try_recv(), Ok(TextInputPush::Stopped));
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
         assert_eq!(other_rx.try_recv(), Err(TryRecvError::Disconnected));
+    }
+
+    #[test]
+    fn hub_reloads_document_on_field_switch_and_tv_side_edit() {
+        let hub = TextInputHub::new();
+        let (tx, mut rx) = unbounded_channel();
+        assert_eq!(hub.subscribe(1, tx), None);
+
+        hub.set_focus(true, "login", "me", false);
+        let (login_session, _) = expect_started(&mut rx);
+
+        // Focus moves to another field while the TV keyboard stays up.
+        hub.set_focus(true, "query", "cats", false);
+        assert_eq!(rx.try_recv(), Ok(TextInputPush::Stopped));
+        let (query_session, text) = expect_started(&mut rx);
+        assert_eq!(text, "cats");
+        assert_ne!(query_session, login_session);
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+
+        // The app clears the field after a search: the phone gets the new text.
+        hub.set_focus(true, "query", "", false);
+        assert_eq!(rx.try_recv(), Ok(TextInputPush::Stopped));
+        let (cleared_session, text) = expect_started(&mut rx);
+        assert_eq!(text, "");
+        assert_ne!(cleared_session, query_session);
+
+        // Reporting the same state again pushes nothing.
+        hub.set_focus(true, "query", "", false);
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
     }
 }
