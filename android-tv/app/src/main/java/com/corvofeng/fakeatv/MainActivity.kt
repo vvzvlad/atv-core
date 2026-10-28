@@ -19,11 +19,11 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        // Remote buttons that can toggle the cursor mode, and their labels.
-        private val MODE_TOGGLE_VALUES = arrayOf("siri", "mute", "power", "none")
+        // Remote buttons that can toggle the cursor mode, and their labels. Mute is not offered:
+        // the core flips its own mute state and reports it to the phone before the app sees it.
+        private val MODE_TOGGLE_VALUES = arrayOf("siri", "power", "none")
         private val MODE_TOGGLE_OPTIONS = arrayOf(
             "Siri 键 (siri, 默认)",
-            "静音 键 (mute)",
             "电源 键 (power)",
             "无 (不切换)"
         )
