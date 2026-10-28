@@ -1,6 +1,7 @@
 //! JNI bindings for Android TV: runs AtvServer and dispatches callbacks into Kotlin/Java.
 
 use std::net::Ipv4Addr;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -140,6 +141,16 @@ impl AtvDelegate for JniDelegate {
             );
         }
     }
+
+    fn show_pairing_pin(&self, pin: &str) {
+        self.call_void_string("onShowPin", pin);
+    }
+
+    fn hide_pairing_pin(&self) {
+        if let Ok(mut env) = self.jvm.attach_current_thread() {
+            let _ = env.call_method(self.callback.as_obj(), "onHidePin", "()V", &[]);
+        }
+    }
 }
 
 struct RunningServer {
@@ -159,6 +170,7 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
     device_id: JString,
     server_id: JString,
     local_ip: JString,
+    files_dir: JString,
     callback: JObject,
 ) -> jboolean {
     let mut state_guard = match SERVER_STATE.lock() {
@@ -190,6 +202,12 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
 
     let local_ip_str: Option<String> = env
         .get_string(&local_ip)
+        .ok()
+        .map(|s| s.into())
+        .filter(|s: &String| !s.is_empty());
+
+    let files_dir_str: Option<String> = env
+        .get_string(&files_dir)
         .ok()
         .map(|s| s.into())
         .filter(|s: &String| !s.is_empty());
@@ -228,6 +246,14 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
     // comes from a UUID file under $HOME, which an Android app process does not have, so it was
     // new on every start and the iPhone's stored pairing stopped verifying after a reboot.
     config.private_key = None;
+    // The TV shows a new code for every pairing attempt, and only phones that
+    // paired (kept in the app's files dir) may control it.
+    config.random_pin = true;
+    config.require_pairing = true;
+    config.pairing_dir = files_dir_str.map(PathBuf::from);
+    // The debug web UI listens on every address and its /api/action presses buttons without
+    // pairing; the app does not use it, so it stays off on Android.
+    config.ui_port = None;
     if let Some(ref s) = local_ip_str {
         if let Ok(ip) = s.parse::<Ipv4Addr>() {
             info!("using explicit local IP from Android: {ip}");

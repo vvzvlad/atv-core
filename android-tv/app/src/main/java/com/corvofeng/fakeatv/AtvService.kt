@@ -41,7 +41,16 @@ class AtvService : Service(), AtvNative.Callback {
         @Volatile
         var isRunning = false
             private set
+
+        /** Pairing code shown in the notification and on MainActivity because the overlay could not be. */
+        @Volatile
+        var fallbackPairingCode: String? = null
+            private set
     }
+
+    /** Pairing code the core asked to show and has not hidden yet. */
+    @Volatile
+    private var shownPairingCode: String? = null
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -204,11 +213,11 @@ class AtvService : Service(), AtvNative.Callback {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
-                    buildNotification(name, pin),
+                    buildNotification(name),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                 )
             } else {
-                startForeground(NOTIFICATION_ID, buildNotification(name, pin))
+                startForeground(NOTIFICATION_ID, buildNotification(name))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to startForeground", e)
@@ -248,7 +257,9 @@ class AtvService : Service(), AtvNative.Callback {
 
                 if (hasValidIp) {
                     Log.i(TAG, "Attempt $attempts: starting native server with IP $localIp (Name: $name, PIN: $pin)")
-                    val started = AtvNative.nativeStartServer(name, pin, deviceId, serverId, localIp!!, this)
+                    val started = AtvNative.nativeStartServer(
+                        name, pin, deviceId, serverId, localIp!!, filesDir.absolutePath, this
+                    )
                     if (started) {
                         isRunning = true
                         // A field may already be focused; the new server starts unfocused.
@@ -363,6 +374,42 @@ class AtvService : Service(), AtvNative.Callback {
         })
     }
 
+    override fun onShowPin(pin: String) {
+        shownPairingCode = pin
+        val a11y = AtvAccessibilityService.instance
+        if (a11y == null) {
+            Log.w(TAG, "Accessibility service is off: pairing code goes to the notification and the app")
+            showFallbackPairingCode(pin)
+            return
+        }
+        a11y.showPairingPin(pin) {
+            // The overlay failed after the core may have hidden this code already.
+            if (shownPairingCode == pin) showFallbackPairingCode(pin)
+        }
+    }
+
+    override fun onHidePin() {
+        shownPairingCode = null
+        AtvAccessibilityService.instance?.hidePairingPin()
+        if (fallbackPairingCode != null) {
+            fallbackPairingCode = null
+            updateNotification(null)
+            broadcast("PairingCode", "hidden")
+        }
+    }
+
+    private fun showFallbackPairingCode(pin: String) {
+        fallbackPairingCode = pin
+        updateNotification(pin)
+        broadcast("PairingCode", "shown")
+    }
+
+    private fun updateNotification(pairingCode: String?) {
+        val name = currentName ?: DeviceInfo.getDeviceName(this)
+        getSystemService(NotificationManager::class.java)
+            ?.notify(NOTIFICATION_ID, buildNotification(name, pairingCode))
+    }
+
     private fun broadcast(type: String, detail: String) {
         val intent = Intent(BROADCAST_EVENT).apply {
             putExtra(EXTRA_EVENT_TYPE, type)
@@ -386,7 +433,7 @@ class AtvService : Service(), AtvNative.Callback {
         }
     }
 
-    private fun buildNotification(name: String, pin: Int): Notification {
+    private fun buildNotification(name: String, pairingCode: String? = null): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -396,7 +443,10 @@ class AtvService : Service(), AtvNative.Callback {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Apple TV Remote Receiver")
-            .setContentText("Listening as \"$name\" (PIN: $pin)")
+            .setContentText(
+                if (pairingCode != null) "Pairing code $pairingCode: enter it on your iPhone"
+                else "Listening as \"$name\""
+            )
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentIntent(pendingIntent)
             .setOngoing(true)

@@ -22,6 +22,9 @@ object AtvNative {
          * or "replace" (text is the whole new field content).
          */
         fun onText(kind: String, text: String, count: Int)
+
+        fun onShowPin(pin: String)
+        fun onHidePin()
     }
 
     // Trackpad modes as numbered by the core's TrackpadMode.
@@ -34,6 +37,7 @@ object AtvNative {
         deviceId: String,
         serverId: String,
         localIp: String,
+        filesDir: String,
         callback: Callback
     ): Boolean
 

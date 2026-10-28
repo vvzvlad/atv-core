@@ -6,6 +6,7 @@
 //! answering HTTP "OK".
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,6 +26,7 @@ use crate::delegate::{AtvDelegate, EventKind, TrackpadMode};
 use crate::error::{Error, Result};
 use crate::identity::{self, DeviceIdentity};
 use crate::inspector::InspectorHub;
+use crate::pairing::{PairedClients, PairingPolicy};
 use crate::registry::{ActiveConnectionTracker, DeviceRegistry};
 use crate::session::{CompanionSession, DEVICE_MODEL};
 use crate::text_input::TextInputHub;
@@ -73,6 +75,14 @@ pub struct AtvConfig {
     pub server_identifier: Option<String>,
     /// Persistent private key seed (32 bytes).
     pub private_key: Option<[u8; 32]>,
+    /// Ignore `pin` and draw a new PIN for every pair-setup attempt; the
+    /// delegate shows it (`AtvDelegate::show_pairing_pin`).
+    pub random_pin: bool,
+    /// Admit only clients that completed pair-setup with this server:
+    /// pair-verify checks the client's signature against its stored key.
+    pub require_pairing: bool,
+    /// Directory for the paired-client list; None keeps it in memory only.
+    pub pairing_dir: Option<PathBuf>,
 }
 
 impl Default for AtvConfig {
@@ -101,6 +111,9 @@ impl Default for AtvConfig {
             device_id: Some(identity.device_id),
             server_identifier: Some(identity.server_identifier),
             private_key: Some(identity.private_key),
+            random_pin: false,
+            require_pairing: false,
+            pairing_dir: None,
         }
     }
 }
@@ -184,6 +197,11 @@ impl AtvServer {
 
         let inspector = InspectorHub::new();
         let text_input = TextInputHub::new();
+        let pairing = PairingPolicy::new(
+            config.random_pin,
+            config.require_pairing,
+            PairedClients::open(config.pairing_dir.as_deref()),
+        );
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let mut tasks = Vec::new();
@@ -197,6 +215,7 @@ impl AtvServer {
             companion_listener,
             identity.clone(),
             config.pin,
+            pairing.clone(),
             delegate.clone(),
             inspector.clone(),
             trackpad_mode.clone(),
@@ -362,7 +381,15 @@ impl AtvServer {
         info!("Name      : \"{}\"", identity.name);
         info!("Device ID : {}", identity.device_id);
         info!("Server ID : {}", identity.server_identifier);
-        info!("PIN       : {:04}", config.pin);
+        if config.random_pin {
+            info!("PIN       : new random PIN for each pairing attempt");
+        } else {
+            info!("PIN       : {:04}", config.pin);
+        }
+        if config.require_pairing {
+            let paired = pairing.clients.lock().map(|c| c.len()).unwrap_or(0);
+            info!("Pairing   : required ({paired} paired clients)");
+        }
         info!("MRP       : {ip}:{mrp_port}");
         info!("Companion : {ip}:{companion_port}");
         info!("AirPlay   : {ip}:{airplay_port}");
@@ -563,6 +590,7 @@ async fn companion_loop(
     listener: TcpListener,
     identity: DeviceIdentity,
     pin: u32,
+    pairing: PairingPolicy,
     delegate: Arc<dyn AtvDelegate>,
     inspector: Arc<InspectorHub>,
     trackpad_mode: Arc<AtomicU8>,
@@ -585,6 +613,7 @@ async fn companion_loop(
             _ = shutdown.changed() => break,
         };
         let identity = identity.clone();
+        let pairing = pairing.clone();
         let delegate = delegate.clone();
         let inspector = inspector.clone();
         let trackpad_mode = trackpad_mode.clone();
@@ -595,7 +624,7 @@ async fn companion_loop(
         let mut client_shutdown = shutdown.clone();
         tokio::spawn(async move {
             tokio::select! {
-                _ = handle_companion(stream, identity, pin, delegate, inspector, trackpad_mode, mouse_mode, registry, active_tracker, text_input) => {},
+                _ = handle_companion(stream, identity, pin, pairing, delegate, inspector, trackpad_mode, mouse_mode, registry, active_tracker, text_input) => {},
                 _ = client_shutdown.changed() => {},
             }
         });
@@ -656,6 +685,7 @@ async fn handle_companion(
     stream: TcpStream,
     identity: DeviceIdentity,
     pin: u32,
+    pairing: PairingPolicy,
     delegate: Arc<dyn AtvDelegate>,
     inspector: Arc<InspectorHub>,
     trackpad_mode: Arc<AtomicU8>,
@@ -695,6 +725,7 @@ async fn handle_companion(
         delegate.clone(),
         &identity,
         pin,
+        pairing,
         mouse_mode,
         trackpad_mode,
         inspector.clone(),
