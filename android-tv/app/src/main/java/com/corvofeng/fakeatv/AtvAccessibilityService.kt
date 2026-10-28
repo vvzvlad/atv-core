@@ -93,14 +93,21 @@ class AtvAccessibilityService : AccessibilityService() {
         Log.i(TAG, "AtvAccessibilityService destroyed")
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val pinHandler = Handler(Looper.getMainLooper())
     private var pinOverlay: View? = null
 
-    /** Show the pairing code over whatever is on screen until [hidePairingPin]. */
-    fun showPairingPin(pin: String) {
-        mainHandler.post {
+    /**
+     * Show the pairing code over whatever is on screen until [hidePairingPin].
+     * [onFailure] runs on the main thread when the window cannot be added.
+     */
+    fun showPairingPin(pin: String, onFailure: () -> Unit) {
+        pinHandler.post {
             removePinOverlay()
-            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return@post
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            if (wm == null) {
+                onFailure()
+                return@post
+            }
             val density = resources.displayMetrics.density
             val padding = (32 * density).toInt()
             val overlay = LinearLayout(this).apply {
@@ -140,12 +147,13 @@ class AtvAccessibilityService : AccessibilityService() {
                 Log.i(TAG, "Pairing code shown")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to show the pairing code", e)
+                onFailure()
             }
         }
     }
 
     fun hidePairingPin() {
-        mainHandler.post { removePinOverlay() }
+        pinHandler.post { removePinOverlay() }
     }
 
     private fun removePinOverlay() {

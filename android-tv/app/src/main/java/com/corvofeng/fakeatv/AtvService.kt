@@ -40,7 +40,16 @@ class AtvService : Service(), AtvNative.Callback {
         @Volatile
         var isRunning = false
             private set
+
+        /** Pairing code shown in the notification and on MainActivity because the overlay could not be. */
+        @Volatile
+        var fallbackPairingCode: String? = null
+            private set
     }
+
+    /** Pairing code the core asked to show and has not hidden yet. */
+    @Volatile
+    private var shownPairingCode: String? = null
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -308,16 +317,39 @@ class AtvService : Service(), AtvNative.Callback {
     }
 
     override fun onShowPin(pin: String) {
+        shownPairingCode = pin
         val a11y = AtvAccessibilityService.instance
         if (a11y == null) {
-            Log.w(TAG, "Pairing code requested, but the accessibility service is off: cannot show it")
+            Log.w(TAG, "Accessibility service is off: pairing code goes to the notification and the app")
+            showFallbackPairingCode(pin)
             return
         }
-        a11y.showPairingPin(pin)
+        a11y.showPairingPin(pin) {
+            // The overlay failed after the core may have hidden this code already.
+            if (shownPairingCode == pin) showFallbackPairingCode(pin)
+        }
     }
 
     override fun onHidePin() {
+        shownPairingCode = null
         AtvAccessibilityService.instance?.hidePairingPin()
+        if (fallbackPairingCode != null) {
+            fallbackPairingCode = null
+            updateNotification(null)
+            broadcast("PairingCode", "hidden")
+        }
+    }
+
+    private fun showFallbackPairingCode(pin: String) {
+        fallbackPairingCode = pin
+        updateNotification(pin)
+        broadcast("PairingCode", "shown")
+    }
+
+    private fun updateNotification(pairingCode: String?) {
+        val name = currentName ?: DeviceInfo.getDeviceName(this)
+        getSystemService(NotificationManager::class.java)
+            ?.notify(NOTIFICATION_ID, buildNotification(name, pairingCode))
     }
 
     private fun broadcast(type: String, detail: String) {
@@ -343,7 +375,7 @@ class AtvService : Service(), AtvNative.Callback {
         }
     }
 
-    private fun buildNotification(name: String): Notification {
+    private fun buildNotification(name: String, pairingCode: String? = null): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -353,7 +385,10 @@ class AtvService : Service(), AtvNative.Callback {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Apple TV Remote Receiver")
-            .setContentText("Listening as \"$name\"")
+            .setContentText(
+                if (pairingCode != null) "Pairing code $pairingCode: enter it on your iPhone"
+                else "Listening as \"$name\""
+            )
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
