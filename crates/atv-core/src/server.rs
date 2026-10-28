@@ -474,12 +474,15 @@ impl AtvServer {
         new_mode.is_mouse()
     }
 
-    /// Report whether a text field is focused on the TV and its current text.
-    /// `_tiStart` is answered from this state, and phones that sent it get
-    /// `_tiStarted` / `_tiStopped` when `focused` flips. Edits typed on the
-    /// phone arrive through [`AtvDelegate::on_text`].
-    pub fn set_text_focus(&self, focused: bool, text: &str) {
-        self.text_input.set_focus(focused, text);
+    /// Report whether a text field is focused on the TV, which one (`field`
+    /// is any stable identity the host picks) and its current text.
+    /// `_tiStart` is answered from this state. Phones that sent it get
+    /// `_tiStarted` / `_tiStopped` when focus changes, and both in a row when
+    /// another field takes focus or the text changes on the TV side. Set
+    /// `from_phone` when the text changed only because the host applied edits
+    /// from [`AtvDelegate::on_text`]; the phone already shows those.
+    pub fn set_text_focus(&self, focused: bool, field: &str, text: &str, from_phone: bool) {
+        self.text_input.set_focus(focused, field, text, from_phone);
     }
 
     /// Unregister Bonjour services and stop all listeners.

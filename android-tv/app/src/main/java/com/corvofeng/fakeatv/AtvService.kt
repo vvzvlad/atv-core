@@ -230,6 +230,8 @@ class AtvService : Service(), AtvNative.Callback {
                     val started = AtvNative.nativeStartServer(name, pin, deviceId, serverId, localIp!!, this)
                     if (started) {
                         isRunning = true
+                        // A field may already be focused; the new server starts unfocused.
+                        AtvAccessibilityService.instance?.resendTextFocus()
                         broadcast("ServerStatus", "running")
                         Log.i(TAG, "Native server started successfully on attempt $attempts with IP $localIp")
                         break

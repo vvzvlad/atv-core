@@ -7,6 +7,8 @@ import android.content.Intent
 import android.graphics.Path
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
@@ -69,37 +71,91 @@ class AtvAccessibilityService : AccessibilityService() {
         }
     }
 
-    // Last text-field state reported to the core; touched only on the main thread.
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Last text-field state the core accepted; touched only on the main thread.
     private var reportedTextFocus = false
+    private var reportedField = ""
     private var reportedText = ""
+
+    // Guards the fields below and every write into the focused field, so the main
+    // thread never sees a write without its bookkeeping.
+    private val textLock = Any()
+
+    // What handleTextOp last wrote and into which field, so the text change it causes
+    // is reported as the phone's own edit rather than as a new document.
+    private var writtenField: String? = null
+    private var writtenText: String? = null
+
+    // A password field exposes dots instead of its text, so the service builds new
+    // values from its own copy of what it typed into the current one.
+    private var passwordField: String? = null
+    private var passwordText = ""
+
+    private class TextFocusReport(
+        val focused: Boolean,
+        val field: String,
+        val text: String,
+        val fromPhone: Boolean
+    )
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> updateTextFocus()
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> updateTextFocus(force = false)
         }
+    }
+
+    /** Report the text-field state again, e.g. to a native server that just started. */
+    fun resendTextFocus() {
+        mainHandler.post { updateTextFocus(force = true) }
     }
 
     /**
      * A text field counts as focused when the on-screen keyboard (IME) window is shown
      * and the input-focused node is editable. Changes go to the core, which tells the
-     * phone to raise or drop its keyboard.
+     * phone to raise, reload or drop its keyboard.
      */
-    private fun updateTextFocus() {
-        val field = if (isImeShown()) findEditableFocus() else null
-        val focused = field != null
-        val text = field?.let { fieldText(it) } ?: ""
-        if (focused == reportedTextFocus && text == reportedText) return
-        reportedTextFocus = focused
-        reportedText = text
-        Log.i(TAG, "Text field focused=$focused (${text.length} chars)")
-        try {
-            AtvNative.nativeSetTextFocus(focused, text)
+    private fun updateTextFocus(force: Boolean) {
+        val report = synchronized(textLock) {
+            val field = if (isImeShown()) findEditableFocus() else null
+            val key = field?.let { fieldKey(it) } ?: ""
+            // A password is never sent to the phone (and is not readable anyway).
+            val text = if (field == null || field.isPassword) "" else fieldText(field)
+            if (key != passwordField) {
+                passwordField = null
+                passwordText = ""
+            }
+            val focused = field != null
+            if (!force && focused == reportedTextFocus && key == reportedField &&
+                text == reportedText
+            ) {
+                return
+            }
+            val fromPhone = key == writtenField && text == writtenText
+            writtenField = null
+            writtenText = null
+            TextFocusReport(focused, key, text, fromPhone)
+        }
+        val accepted = try {
+            AtvNative.nativeSetTextFocus(report.focused, report.field, report.text, report.fromPhone)
         } catch (e: Throwable) {
             // UnsatisfiedLinkError when the native library failed to load.
             Log.w(TAG, "nativeSetTextFocus failed", e)
+            false
+        }
+        Log.i(
+            TAG,
+            "Text field focused=${report.focused} field=${report.field} " +
+                "(${report.text.length} chars, fromPhone=${report.fromPhone}) accepted=$accepted"
+        )
+        // Not running yet: keep the old state so the next event or resend reports again.
+        if (accepted) {
+            reportedTextFocus = report.focused
+            reportedField = report.field
+            reportedText = report.text
         }
     }
 
@@ -111,6 +167,12 @@ class AtvAccessibilityService : AccessibilityService() {
 
     private fun findEditableFocus(): AccessibilityNodeInfo? =
         findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+
+    // AccessibilityNodeInfo.hashCode() is derived from the view's accessibility id and
+    // the window id, so it names the same view across lookups. viewIdResourceName would
+    // need flagReportViewIds and is null for views without an id.
+    private fun fieldKey(field: AccessibilityNodeInfo): String =
+        "${field.windowId}:${field.hashCode()}"
 
     // An empty field reports its hint as text.
     private fun fieldText(field: AccessibilityNodeInfo): String =
@@ -124,24 +186,35 @@ class AtvAccessibilityService : AccessibilityService() {
             Log.w(TAG, "Text $kind dropped: no editable field in focus")
             return
         }
-        val current = fieldText(field)
+        val key = fieldKey(field)
+        val current = synchronized(textLock) {
+            if (field.isPassword) {
+                if (key != passwordField) {
+                    passwordField = key
+                    passwordText = ""
+                }
+                passwordText
+            } else {
+                fieldText(field)
+            }
+        }
         when (kind) {
-            "insert" -> insertText(field, current, text)
-            "delete" -> setFieldText(field, dropLastChars(current, count))
-            "replace" -> setFieldText(field, text)
+            "insert" -> insertText(field, key, current, text)
+            "delete" -> setFieldText(field, key, dropLastChars(current, count))
+            "replace" -> setFieldText(field, key, text)
             else -> Log.w(TAG, "Unknown text op: $kind")
         }
     }
 
     // Return arrives as "\n": the text around it goes into the field and each
     // newline becomes an Enter press, which starts the search in leanback search bars.
-    private fun insertText(field: AccessibilityNodeInfo, current: String, text: String) {
+    private fun insertText(field: AccessibilityNodeInfo, key: String, current: String, text: String) {
         val lines = text.split('\n')
         var buffer = current
         lines.forEachIndexed { index, line ->
             if (line.isNotEmpty()) {
                 buffer += line
-                setFieldText(field, buffer)
+                setFieldText(field, key, buffer)
             }
             if (index < lines.lastIndex) {
                 KeyDispatcher.dispatchButton("enter")
@@ -156,12 +229,22 @@ class AtvAccessibilityService : AccessibilityService() {
         return text.substring(0, end)
     }
 
-    private fun setFieldText(field: AccessibilityNodeInfo, value: String) {
+    private fun setFieldText(field: AccessibilityNodeInfo, key: String, value: String) {
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
         }
-        if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-            Log.w(TAG, "ACTION_SET_TEXT failed")
+        synchronized(textLock) {
+            if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                Log.w(TAG, "ACTION_SET_TEXT failed")
+                return
+            }
+            writtenField = key
+            if (field.isPassword) {
+                passwordText = value
+                writtenText = "" // passwords are reported empty
+            } else {
+                writtenText = value
+            }
         }
     }
 
