@@ -208,6 +208,9 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
     config.random_pin = true;
     config.require_pairing = true;
     config.pairing_dir = files_dir_str.map(PathBuf::from);
+    // The debug web UI listens on every address and its /api/action presses buttons without
+    // pairing; the app does not use it, so it stays off on Android.
+    config.ui_port = None;
     if let Some(ref s) = local_ip_str {
         if let Ok(ip) = s.parse::<Ipv4Addr>() {
             info!("using explicit local IP from Android: {ip}");
