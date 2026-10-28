@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -29,6 +30,9 @@ pub struct PairingPolicy {
     /// Pair-verify admits only clients found in `clients` with a valid signature.
     pub require_pairing: bool,
     pub clients: Arc<Mutex<PairedClients>>,
+    /// Connection whose pairing code is on screen. There is one screen, so a
+    /// second pair-setup waits until that code is hidden (HAP kTLVError_Busy).
+    code_owner: Arc<Mutex<Option<u64>>>,
 }
 
 impl PairingPolicy {
@@ -37,6 +41,28 @@ impl PairingPolicy {
             random_pin,
             require_pairing,
             clients: Arc::new(Mutex::new(clients)),
+            code_owner: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Take the screen for connection `conn_id`'s code; false while another
+    /// connection's code is shown.
+    pub fn claim_code(&self, conn_id: u64) -> bool {
+        let mut owner = self.code_owner.lock().unwrap_or_else(|p| p.into_inner());
+        match *owner {
+            Some(other) if other != conn_id => false,
+            _ => {
+                *owner = Some(conn_id);
+                true
+            }
+        }
+    }
+
+    /// Give the screen back if connection `conn_id` holds it.
+    pub fn release_code(&self, conn_id: u64) {
+        let mut owner = self.code_owner.lock().unwrap_or_else(|p| p.into_inner());
+        if *owner == Some(conn_id) {
+            *owner = None;
         }
     }
 }
@@ -105,8 +131,13 @@ impl PairedClients {
             .into_iter()
             .map(|(id, key)| format!("{} {}\n", hex::encode(id), hex::encode(key)))
             .collect();
+        // Flush the new list to disk before it replaces the old one, so a power
+        // cut leaves one complete version.
         let tmp = path.with_extension("tmp");
-        fs::write(&tmp, body)?;
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(body.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
         fs::rename(&tmp, path)
     }
 }

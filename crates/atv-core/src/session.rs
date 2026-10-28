@@ -393,11 +393,30 @@ impl CompanionSession {
         if self.active_pin.take().is_some() {
             info!("pairing PIN withdrawn");
             self.delegate.hide_pairing_pin();
+            self.pairing.release_code(self.conn_id);
         }
     }
 
     async fn pair_setup_m1(&mut self) -> Result<()> {
         if self.pairing.random_pin {
+            if !self.pairing.claim_code(self.conn_id) {
+                // One screen: another phone's code is up until that attempt ends.
+                warn!("pair-setup refused: another connection has a pairing code on screen");
+                self.inspector
+                    .emit("auth", "{\"step\":\"pair_setup_m1\",\"busy\":true}");
+                return self
+                    .send_opack(
+                        FrameType::PsNext,
+                        &Value::dict(vec![Value::kv(
+                            "_pd",
+                            Value::Bytes(tlv::write(&[
+                                (tags::SEQ_NO, &[0x02]),
+                                (tags::ERROR, &[0x07]),
+                            ])),
+                        )]),
+                    )
+                    .await;
+            }
             // A new PIN, and an SRP verifier for it, for every attempt.
             let pin = pairing::random_pin();
             self.srp = SrpServer::new(pin, &self.private_key);
@@ -1212,6 +1231,7 @@ mod tests {
     //! Pairing over a real socket: the test plays the phone, the session the TV.
 
     use super::*;
+    use std::sync::atomic::AtomicU64;
     use std::sync::Mutex as StdMutex;
 
     use num_bigint::BigUint;
@@ -1270,6 +1290,8 @@ mod tests {
         }
     }
 
+    static NEXT_CONN_ID: AtomicU64 = AtomicU64::new(1);
+
     struct Peer {
         session: CompanionSession,
         socket: TcpStream,
@@ -1302,7 +1324,7 @@ mod tests {
                 InspectorHub::new(),
                 Arc::new(Mutex::new(DeviceRegistry::new(std::time::Duration::from_secs(60)))),
                 Arc::new(Mutex::new(ActiveConnectionTracker::new())),
-                1,
+                NEXT_CONN_ID.fetch_add(1, Ordering::SeqCst),
                 peer.ip().to_string(),
                 Arc::new(AtomicBool::new(false)),
             );
@@ -1338,10 +1360,16 @@ mod tests {
             tlv::read(value.get("_pd").and_then(Value::as_bytes).unwrap())
         }
 
+        /// Pair-setup M1: returns M2.
+        async fn m1(&mut self) -> BTreeMap<u8, Vec<u8>> {
+            self.send(FrameType::PsStart, 1, &[(tags::METHOD, &[0])]).await.unwrap();
+            self.recv().await
+        }
+
         /// Pair-setup M1/M2: returns the PIN shown on screen, salt and B.
         async fn setup_m1(&mut self, delegate: &Recorder) -> (u32, Vec<u8>, Vec<u8>) {
-            self.send(FrameType::PsStart, 1, &[(tags::METHOD, &[0])]).await.unwrap();
-            let m2 = self.recv().await;
+            let m2 = self.m1().await;
+            assert!(!m2.contains_key(&tags::ERROR), "M2 {m2:?}");
             (delegate.last_shown_pin(), m2[&tags::SALT].clone(), m2[&tags::PUBLIC_KEY].clone())
         }
 
@@ -1576,5 +1604,51 @@ mod tests {
         assert!(m4.contains_key(&tags::PROOF), "M4 {m4:?}");
         assert!(delegate.calls().is_empty());
     }
-}
 
+    #[tokio::test]
+    async fn second_pairing_is_busy_while_a_code_is_shown() {
+        let delegate = Arc::new(Recorder::default());
+        let pairing = enforcing(PairedClients::open(None));
+        let mut first = Peer::connect(pairing.clone(), delegate.clone()).await;
+        let mut second = Peer::connect(pairing.clone(), delegate.clone()).await;
+
+        let (pin, _, _) = first.setup_m1(&delegate).await;
+        let m2 = second.m1().await;
+        assert_eq!(m2.get(&tags::ERROR), Some(&vec![0x07]), "kTLVError_Busy");
+        assert!(!m2.contains_key(&tags::SALT));
+        assert_eq!(delegate.calls(), vec![format!("show:{pin}")], "the first code stays up");
+
+        // The phone that holds the screen may restart its own attempt.
+        let (again, _, _) = first.setup_m1(&delegate).await;
+        assert_eq!(delegate.calls().last(), Some(&format!("show:{again}")));
+    }
+
+    #[tokio::test]
+    async fn screen_is_released_after_success_failure_and_close() {
+        let delegate = Arc::new(Recorder::default());
+        let pairing = enforcing(PairedClients::open(None));
+        let phone = Phone::new("phone-1", 1);
+        let mut a = Peer::connect(pairing.clone(), delegate.clone()).await;
+        let mut b = Peer::connect(pairing.clone(), delegate.clone()).await;
+
+        // Success: A pairs, then B may start.
+        let (pin, salt, srp_b) = a.setup_m1(&delegate).await;
+        assert_eq!(b.m1().await.get(&tags::ERROR), Some(&vec![0x07]));
+        let (_, srp_key) = a.setup_m3(pin, &salt, &srp_b).await;
+        a.setup_m5(&phone, &phone.key, &srp_key).await.0.unwrap();
+        let (b_pin, salt, srp_b) = b.setup_m1(&delegate).await;
+
+        // Failure: B types a wrong code, then A may start.
+        assert_eq!(a.m1().await.get(&tags::ERROR), Some(&vec![0x07]));
+        let wrong = if b_pin == 9999 { 1000 } else { b_pin + 1 };
+        let (m4, _) = b.setup_m3(wrong, &salt, &srp_b).await;
+        assert_eq!(m4.get(&tags::ERROR), Some(&vec![0x02]));
+        a.setup_m1(&delegate).await;
+
+        // Close: A's connection drops mid-pairing, then B may start.
+        assert_eq!(b.m1().await.get(&tags::ERROR), Some(&vec![0x07]));
+        drop(a);
+        assert_eq!(delegate.calls().last().map(String::as_str), Some("hide"));
+        b.setup_m1(&delegate).await;
+    }
+}
