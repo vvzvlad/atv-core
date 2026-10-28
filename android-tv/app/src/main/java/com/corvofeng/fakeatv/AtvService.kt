@@ -329,6 +329,19 @@ class AtvService : Service(), AtvNative.Callback {
         broadcast("Audio", "vol=$volume muted=$muted")
     }
 
+    override fun onText(kind: String, text: String, count: Int) {
+        val service = AtvAccessibilityService.instance
+        if (service == null) {
+            Log.w(TAG, "onText: accessibility service is not running, $kind dropped")
+            return
+        }
+        try {
+            service.handleTextOp(kind, text, count)
+        } catch (e: Exception) {
+            Log.e(TAG, "onText: $kind failed", e)
+        }
+    }
+
     override fun onEvent(kind: String, detail: String) {
         Log.i(TAG, "onEvent: $kind $detail")
         if (kind == "MouseClick") {

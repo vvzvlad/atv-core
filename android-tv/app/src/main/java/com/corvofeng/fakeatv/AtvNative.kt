@@ -15,6 +15,13 @@ object AtvNative {
         fun onAudio(volume: Double, muted: Boolean)
         fun onEvent(kind: String, detail: String)
         fun onTrackpadModeChanged(mode: Int)
+
+        /**
+         * The phone's keyboard edited the focused text field.
+         * kind: "insert" (text, Return is "\n"), "delete" (count chars before the cursor)
+         * or "replace" (text is the whole new field content).
+         */
+        fun onText(kind: String, text: String, count: Int)
     }
 
     // Trackpad modes as numbered by the core's TrackpadMode.
@@ -33,4 +40,7 @@ object AtvNative {
     external fun nativeStopServer()
     external fun nativeSetTrackpadMode(mode: Int): Boolean
     external fun nativeIsRunning(): Boolean
+
+    /** Report whether an editable field is focused on the TV and its current text. */
+    external fun nativeSetTextFocus(focused: Boolean, text: String)
 }
