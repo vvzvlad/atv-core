@@ -33,6 +33,13 @@ object KeyDispatcher {
     var lastUsedEngine: String = "未执行"
         private set
 
+    // Same outcome as lastUsedEngine, as a key the UI names in its own language:
+    // "event", "adb", "a11y", "event_failed", "adb_failed", "a11y_failed", "failed",
+    // or "" before the first key.
+    @Volatile
+    var lastUsedChannel: String = ""
+        private set
+
     fun init(context: Context) {
         val savedModeKey = DeviceInfo.getInjectionMode(context)
         currentMode = InjectionMode.fromKey(savedModeKey)
@@ -62,51 +69,63 @@ object KeyDispatcher {
                 menuBindingButton.equals(lowerName, ignoreCase = true)
 
         var executedEngine = "none"
+        var channel = ""
 
         when (currentMode) {
             InjectionMode.AUTO -> {
                 // Tier 1: Hardware Event (/dev/input)
                 if (RemoteController.isHardwareAvailable && RemoteController.sendKey(lowerName, isMappedToMenu)) {
                     executedEngine = "硬件事件驱动 (/dev/input)"
+                    channel = "event"
                 }
                 // Tier 2: Local ADB (127.0.0.1:5555)
                 else if (LocalAdbDriver.sendKey(lowerName, isMappedToMenu)) {
                     executedEngine = "本地 ADB (127.0.0.1:5555)"
+                    channel = "adb"
                 }
                 // Tier 3: Accessibility Service fallback
                 else if (AtvAccessibilityService.instance?.sendKey(lowerName, isMappedToMenu) == true) {
                     executedEngine = "无障碍服务 (Accessibility)"
+                    channel = "a11y"
                 } else {
                     executedEngine = "分发失败 (无可用通道)"
+                    channel = "failed"
                 }
             }
 
             InjectionMode.EVENT -> {
                 if (RemoteController.sendKey(lowerName, isMappedToMenu)) {
                     executedEngine = "硬件事件驱动"
+                    channel = "event"
                 } else {
                     executedEngine = "硬件驱动失败 (无权限或设备不存在)"
+                    channel = "event_failed"
                 }
             }
 
             InjectionMode.ADB -> {
                 if (LocalAdbDriver.sendKey(lowerName, isMappedToMenu)) {
                     executedEngine = "本地 ADB"
+                    channel = "adb"
                 } else {
                     executedEngine = "本地 ADB 失败 (端口未连接或已关闭)"
+                    channel = "adb_failed"
                 }
             }
 
             InjectionMode.A11Y -> {
                 if (AtvAccessibilityService.instance?.sendKey(lowerName, isMappedToMenu) == true) {
                     executedEngine = "无障碍服务"
+                    channel = "a11y"
                 } else {
                     executedEngine = "无障碍服务失败 (服务未开启)"
+                    channel = "a11y_failed"
                 }
             }
         }
 
         lastUsedEngine = executedEngine
+        lastUsedChannel = channel
         val display = if (isMappedToMenu) "$name -> MENU" else name
         Log.i(TAG, "dispatchButton: $display via [$executedEngine]")
         return executedEngine
