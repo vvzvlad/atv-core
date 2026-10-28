@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
         btnToggle.text = if (running) "Stop Server" else "Start Server"
 
         tvIp.text = "IP: ${getWifiIpAddress()}   ID: $deviceId"
-        tvPin.text = "Pairing PIN: 1111"
+        tvPin.text = "The pairing code appears on screen when you pair"
 
         val currentBinding = DeviceInfo.getMenuButtonBinding(this)
         tvMenuBinding.text = "Menu 键映射: ${getMenuBindingDisplayName(currentBinding)}"

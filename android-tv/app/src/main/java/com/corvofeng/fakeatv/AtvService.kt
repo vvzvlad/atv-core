@@ -183,11 +183,11 @@ class AtvService : Service(), AtvNative.Callback {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
-                    buildNotification(name, pin),
+                    buildNotification(name),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                 )
             } else {
-                startForeground(NOTIFICATION_ID, buildNotification(name, pin))
+                startForeground(NOTIFICATION_ID, buildNotification(name))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to startForeground", e)
@@ -227,7 +227,9 @@ class AtvService : Service(), AtvNative.Callback {
 
                 if (hasValidIp) {
                     Log.i(TAG, "Attempt $attempts: starting native server with IP $localIp (Name: $name, PIN: $pin)")
-                    val started = AtvNative.nativeStartServer(name, pin, deviceId, serverId, localIp!!, this)
+                    val started = AtvNative.nativeStartServer(
+                        name, pin, deviceId, serverId, localIp!!, filesDir.absolutePath, this
+                    )
                     if (started) {
                         isRunning = true
                         broadcast("ServerStatus", "running")
@@ -305,6 +307,19 @@ class AtvService : Service(), AtvNative.Callback {
         broadcast("Event", "$kind: $detail")
     }
 
+    override fun onShowPin(pin: String) {
+        val a11y = AtvAccessibilityService.instance
+        if (a11y == null) {
+            Log.w(TAG, "Pairing code requested, but the accessibility service is off: cannot show it")
+            return
+        }
+        a11y.showPairingPin(pin)
+    }
+
+    override fun onHidePin() {
+        AtvAccessibilityService.instance?.hidePairingPin()
+    }
+
     private fun broadcast(type: String, detail: String) {
         val intent = Intent(BROADCAST_EVENT).apply {
             putExtra(EXTRA_EVENT_TYPE, type)
@@ -328,7 +343,7 @@ class AtvService : Service(), AtvNative.Callback {
         }
     }
 
-    private fun buildNotification(name: String, pin: Int): Notification {
+    private fun buildNotification(name: String): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -338,7 +353,7 @@ class AtvService : Service(), AtvNative.Callback {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Apple TV Remote Receiver")
-            .setContentText("Listening as \"$name\" (PIN: $pin)")
+            .setContentText("Listening as \"$name\"")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
