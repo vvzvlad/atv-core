@@ -14,6 +14,7 @@ This fork of [corvofeng/atv-core](https://github.com/corvofeng/atv-core) adds th
 - **iPhone keyboard.** When a text field on the TV takes focus, the iPhone remote raises its keyboard. Typed text, Cyrillic included, goes into the field; Return sends Enter.
 - **Pairing like an Apple TV.** Every pairing attempt shows a new random 4-digit code on the TV screen, and only iPhones that entered such a code can control the TV. The fixed PIN `1111` is gone on Android.
 - **Pairing survives restarts.** The server key no longer changes on every app start, so the iPhone stays paired after the box reboots.
+- **Connects on the first try.** The receiver no longer drops a verified iPhone connection that is slow to open the remote session, so the remote does not flip to "not connected" and reconnect.
 - **New main screen** in the TV app: a visible focus, settings with their current values, the text in English or Chinese.
 - **No debug web UI on Android.** Its port 8765 pressed buttons without pairing.
 

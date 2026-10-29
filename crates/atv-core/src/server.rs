@@ -737,20 +737,9 @@ async fn handle_companion(
         text_input.clone(),
         text_push_tx,
     );
-    let timeout_deadline = session.timeout_deadline();
     let mut disconnect_reason = "peer_closed".to_string();
 
     loop {
-        let deadline = *timeout_deadline.lock().await;
-        let timeout_fut = async {
-            if let Some(dl) = deadline {
-                tokio::time::sleep_until(dl).await;
-                true
-            } else {
-                std::future::pending::<bool>().await
-            }
-        };
-
         tokio::select! {
             frame = frame_rx.recv() => {
                 let (frame_type, header, payload) = match frame {
@@ -779,15 +768,6 @@ async fn handle_companion(
                 disconnect_reason = "superseded".to_string();
                 info!("companion connection from {peer} superseded by new connection");
                 break;
-            }
-            _ = timeout_fut => {
-                if !session.is_established() {
-                    disconnect_reason = "sessionless_timeout".to_string();
-                    info!("companion connection from {peer} timed out without remote session; closing to free channel");
-                    break;
-                }
-                // The session came up meanwhile: drop the deadline so it does not fire again.
-                *timeout_deadline.lock().await = None;
             }
         }
     }
