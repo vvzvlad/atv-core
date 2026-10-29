@@ -16,6 +16,12 @@ enum class InjectionMode(val key: String, val displayName: String) {
     }
 }
 
+/**
+ * Outcome of one key: [engine] is the dispatcher's own log text, [channel] the same outcome as a
+ * key that [KeyDispatcher.channelLabel] names in the UI language.
+ */
+data class DispatchResult(val engine: String, val channel: String)
+
 object KeyDispatcher {
     private const val TAG = "KeyDispatcher"
 
@@ -40,6 +46,20 @@ object KeyDispatcher {
     var lastUsedChannel: String = ""
         private set
 
+    /** Names a channel key from [DispatchResult.channel] in the current UI language. */
+    fun channelLabel(context: Context, channel: String): String = context.getString(
+        when (channel) {
+            "event" -> R.string.engine_event
+            "adb" -> R.string.engine_adb
+            "a11y" -> R.string.engine_a11y
+            "event_failed" -> R.string.engine_event_failed
+            "adb_failed" -> R.string.engine_adb_failed
+            "a11y_failed" -> R.string.engine_a11y_failed
+            "failed" -> R.string.engine_failed
+            else -> R.string.engine_none
+        }
+    )
+
     fun init(context: Context) {
         val savedModeKey = DeviceInfo.getInjectionMode(context)
         currentMode = InjectionMode.fromKey(savedModeKey)
@@ -62,7 +82,7 @@ object KeyDispatcher {
         }
     }
 
-    fun dispatchButton(name: String): String {
+    fun dispatchButton(name: String): DispatchResult {
         val lowerName = name.lowercase().trim()
         val isMappedToMenu = menuBindingButton.isNotBlank() &&
                 menuBindingButton != "none" &&
@@ -128,6 +148,6 @@ object KeyDispatcher {
         lastUsedChannel = channel
         val display = if (isMappedToMenu) "$name -> MENU" else name
         Log.i(TAG, "dispatchButton: $display via [$executedEngine]")
-        return executedEngine
+        return DispatchResult(executedEngine, channel)
     }
 }
