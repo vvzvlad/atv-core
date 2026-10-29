@@ -39,8 +39,7 @@
     <!-- Dialogs. The option order matches the value arrays in MainActivity. -->
     <string name="dialog_cursor_toggle_title">选择切换光标模式的遥控器按键</string>
     <string-array name="cursor_toggle_options">
-        <item>Siri 键 (siri, 默认)</item>
-        <item>电源 键 (power)</item>
+        <item>电源 键 (power, 默认)</item>
         <item>无 (不切换)</item>
     </string-array>
 

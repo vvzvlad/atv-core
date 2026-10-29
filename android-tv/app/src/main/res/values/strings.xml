@@ -42,8 +42,7 @@
     <!-- Dialogs. The option order matches the value arrays in MainActivity. -->
     <string name="dialog_cursor_toggle_title">Remote button that switches cursor mode</string>
     <string-array name="cursor_toggle_options">
-        <item>Siri button (default)</item>
-        <item>Power button</item>
+        <item>Power button (default)</item>
         <item>None (no switching)</item>
     </string-array>
 
