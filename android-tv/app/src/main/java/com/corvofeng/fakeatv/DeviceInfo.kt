@@ -38,7 +38,7 @@ object DeviceInfo {
 
     /** Remote button that toggles the cursor mode instead of sending its key ("none" disables). */
     fun getModeToggleButton(context: Context): String {
-        return getPrefs(context).getString(PREF_MODE_TOGGLE_BUTTON, "siri") ?: "siri"
+        return getPrefs(context).getString(PREF_MODE_TOGGLE_BUTTON, "power") ?: "power"
     }
 
     fun setModeToggleButton(context: Context, buttonName: String) {

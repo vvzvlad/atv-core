@@ -33,7 +33,7 @@ object KeyDispatcher {
 
     // Remote button that toggles the cursor mode instead of sending its key.
     @Volatile
-    var modeToggleButton: String = "siri"
+    var modeToggleButton: String = "power"
 
     @Volatile
     var lastUsedEngine: String = "未执行"

@@ -23,8 +23,9 @@ class MainActivity : AppCompatActivity() {
     companion object {
         // Remote buttons that can toggle the cursor mode, in the order of R.array.cursor_toggle_options.
         // Mute is not offered: the core flips its own mute state and reports it to the phone before
-        // the app sees it.
-        private val MODE_TOGGLE_VALUES = arrayOf("siri", "power", "none")
+        // the app sees it. Siri is not offered either: the iPhone remote has no Siri button, and
+        // holding the phone's side button does not reach the TV.
+        private val MODE_TOGGLE_VALUES = arrayOf("power", "none")
 
         // Remote buttons that can act as the Android Menu key, in the order of
         // R.array.menu_binding_options and R.array.menu_binding_values.
