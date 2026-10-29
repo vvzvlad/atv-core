@@ -27,11 +27,14 @@
         android:layout_marginTop="16dp"
         android:text="@string/details_log_title" />
 
+    <!-- Newest first; 12 lines keep the dialog inside a 960x540dp screen without a half-cut line -->
     <TextView
         android:id="@+id/tvLog"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="12"
         android:fontFamily="monospace"
         android:textColor="@color/text_primary"
         android:textSize="13sp" />

@@ -105,10 +105,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnAccessibility.setOnClickListener {
-            if (RemoteController.isHardwareAvailable) {
-                Toast.makeText(this, R.string.toast_hw_driver, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+            // Even with the hardware key driver the service is needed: it draws the cursor, clicks,
+            // types text from the iPhone keyboard and shows the pairing code over other apps.
             if (AtvAccessibilityService.isServiceRunning) {
                 Toast.makeText(this, R.string.toast_a11y_already_on, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
@@ -120,7 +118,7 @@ class MainActivity : AppCompatActivity() {
                 AlertDialog.Builder(this)
                     .setTitle(R.string.a11y_no_settings_title)
                     .setMessage(getString(R.string.a11y_no_settings_message, ADB_ENABLE_COMMANDS))
-                    .setPositiveButton(android.R.string.ok, null)
+                    .setPositiveButton(R.string.btn_ok, null)
                     .show()
             }
         }
@@ -232,7 +230,7 @@ class MainActivity : AppCompatActivity() {
             getString(if (AtvAccessibilityService.isServiceRunning) R.string.channel_a11y_on else R.string.channel_a11y_off)
         )
         view.findViewById<TextView>(R.id.tvLastKey).text =
-            getString(R.string.details_last_key, getChannelDisplayName(KeyDispatcher.lastUsedChannel))
+            getString(R.string.details_last_key, KeyDispatcher.channelLabel(this, KeyDispatcher.lastUsedChannel))
         view.findViewById<TextView>(R.id.tvDeviceId).text =
             getString(R.string.details_device_id, DeviceInfo.getDeviceId(this))
         view.findViewById<TextView>(R.id.tvLog).text =
@@ -310,7 +308,7 @@ class MainActivity : AppCompatActivity() {
                 onPick(which, labels[which])
                 dialog.dismiss()
             }
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(R.string.btn_cancel, null)
             .show()
         dialog.listView?.selector = ContextCompat.getDrawable(this, R.drawable.bg_dialog_item)
     }
@@ -320,19 +318,6 @@ class MainActivity : AppCompatActivity() {
         val index = MENU_BINDING_VALUES.indexOf(key)
         return if (index >= 0) resources.getStringArray(R.array.menu_binding_values)[index] else binding
     }
-
-    private fun getChannelDisplayName(channel: String): String = getString(
-        when (channel) {
-            "event" -> R.string.engine_event
-            "adb" -> R.string.engine_adb
-            "a11y" -> R.string.engine_a11y
-            "event_failed" -> R.string.engine_event_failed
-            "adb_failed" -> R.string.engine_adb_failed
-            "a11y_failed" -> R.string.engine_a11y_failed
-            "failed" -> R.string.engine_failed
-            else -> R.string.engine_none
-        }
-    )
 
     private fun color(id: Int): Int = ContextCompat.getColor(this, id)
 

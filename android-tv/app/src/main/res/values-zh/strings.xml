@@ -5,7 +5,6 @@
     <string name="status_stopped">● 已停止</string>
 
     <!-- Connect card: what the iPhone sees and how to pair -->
-    <string name="connect_title">连接 iPhone</string>
     <string name="connect_name_label">iPhone 上显示的电视名称</string>
     <string name="connect_ip">IP 地址: %1$s</string>
     <string name="ip_unknown">未知</string>
@@ -19,7 +18,7 @@
     <string name="a11y_on">无障碍状态: 已开启 (可兜底)</string>
     <string name="a11y_off">无障碍状态: 未开启 (普通电视推荐开启)</string>
     <string name="a11y_on_note">配对码会显示在任意画面之上，并可兜底发送按键。</string>
-    <string name="a11y_off_note">开启后配对码会显示在任意画面之上；未开启时只在本应用中显示。</string>
+    <string name="a11y_off_note">开启后配对码会显示在任意画面上；否则仅在本应用和通知中显示。</string>
 
     <!-- Buttons -->
     <string name="btn_a11y_settings">无障碍设置</string>
@@ -34,6 +33,8 @@
     <string name="setting_details">技术详情</string>
     <string name="details_summary">通道和事件日志</string>
     <string name="btn_close">关闭</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_ok">确定</string>
 
     <!-- Dialogs. The option order matches the value arrays in MainActivity. -->
     <string name="dialog_cursor_toggle_title">选择切换光标模式的遥控器按键</string>
@@ -75,7 +76,6 @@
     </string-array>
 
     <!-- Toasts and messages -->
-    <string name="toast_hw_driver">硬件遥控驱动 (/dev/input/event0) 已可用，无需开启无障碍服务。</string>
     <string name="toast_a11y_already_on">无障碍服务已开启</string>
     <string name="a11y_no_settings_title">无障碍设置</string>
     <string name="a11y_no_settings_message">此设备没有系统无障碍设置页面。\n\n请通过 ADB 开启：\n\n%1$s</string>

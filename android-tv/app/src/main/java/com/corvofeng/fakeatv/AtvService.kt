@@ -329,9 +329,10 @@ class AtvService : Service(), AtvNative.Callback {
                 KeyDispatcher.menuBindingButton.equals(lowerName, ignoreCase = true)
 
         val display = if (isMapped) "$name -> MENU" else name
-        val engine = KeyDispatcher.dispatchButton(name)
-        Log.i(TAG, "onButton: $display via [$engine]")
-        broadcast("Button", "$display [$engine]")
+        val result = KeyDispatcher.dispatchButton(name)
+        Log.i(TAG, "onButton: $display via [${result.engine}]")
+        // The app's event log names the channel in the UI language; logcat keeps the dispatcher's text.
+        broadcast("Button", "$display [${KeyDispatcher.channelLabel(this, result.channel)}]")
     }
 
     override fun onTouch(dx: Double, dy: Double, phase: Int) {

@@ -51,7 +51,9 @@
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginTop">8dp</item>
-        <item name="android:minHeight">52dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:paddingStart">18dp</item>
@@ -60,6 +62,15 @@
         <item name="android:stateListAnimator">@animator/focus_scale</item>
         <item name="android:focusable">true</item>
         <item name="android:clickable">true</item>
+    </style>
+
+    <!-- Title with the current value under it, so a long value is never cut off -->
+    <style name="FakeAtv.RowText">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:duplicateParentState">true</item>
+        <item name="android:orientation">vertical</item>
     </style>
 
     <style name="FakeAtv.RowTitle">
@@ -72,16 +83,12 @@
     </style>
 
     <style name="FakeAtv.RowValue">
-        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_weight">1</item>
-        <item name="android:layout_marginStart">16dp</item>
+        <item name="android:layout_marginTop">1dp</item>
         <item name="android:duplicateParentState">true</item>
-        <item name="android:ellipsize">end</item>
-        <item name="android:gravity">end</item>
-        <item name="android:maxLines">1</item>
         <item name="android:textColor">@color/fg_secondary</item>
-        <item name="android:textSize">15sp</item>
+        <item name="android:textSize">14sp</item>
     </style>
 
     <style name="FakeAtv.RowChevron">
