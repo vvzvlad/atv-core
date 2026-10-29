@@ -114,8 +114,8 @@ xattr -dr com.apple.quarantine /Applications/AppleTVRemote.app
 | **三击 ⏯** | 上一集 / 快退 | 上一曲（⏮） |
 | **音量 +/-** | `KEYCODE_VOLUME_UP/DOWN` | 主音量 + 原生 HUD |
 | **静音** | `KEYCODE_VOLUME_MUTE` | 系统静音 |
-| **侧边 Siri 键** | 切换 光标 ⇄ 方向键（可在应用中改为电源键或关闭；此时 Siri 键为语音搜索 `KEYCODE_SEARCH`） | 切换 光标 ⇄ 方向键 / Siri |
-| **电源** | `GLOBAL_ACTION_POWER_DIALOG` | 屏幕睡眠 / 唤醒 |
+| **侧边 Siri 键** | 语音搜索（`KEYCODE_SEARCH`） | 切换 光标 ⇄ 方向键 / Siri |
+| **电源** | 切换 光标 ⇄ 方向键（可在应用中关闭；此时为 `GLOBAL_ACTION_POWER_DIALOG`） | 屏幕睡眠 / 唤醒 |
 
 ---
 
