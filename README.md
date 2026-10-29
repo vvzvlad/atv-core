@@ -4,6 +4,21 @@
 
 **Turn the Apple TV Remote that's already built into your iPhone into a controller for Android TV and Mac.** Pull down Control Center, pick your device, and start navigating — no jailbreak, no third-party app, no extra hardware.
 
+## About this fork
+
+This fork of [corvofeng/atv-core](https://github.com/corvofeng/atv-core) adds the following to the Android TV receiver:
+
+- **Several steps per swipe.** A long swipe on the touchpad walks across several items while the finger moves, one step per 150 touchpad units, as on a real Apple TV. A short swipe still gives one step.
+- **Fast key presses.** Keys go through a resident injector started once over the local ADB connection instead of a new `input keyevent` process per key: 40 ms or less per key instead of 0.3–1.6 s on a TV box.
+- **Cursor.** The Power button of the iPhone remote switches between D-pad and cursor mode. An arrow pointer shows on screen, a swipe moves it, a tap clicks under it. The app can turn the switch off.
+- **iPhone keyboard.** When a text field on the TV takes focus, the iPhone remote raises its keyboard. Typed text, Cyrillic included, goes into the field; Return sends Enter.
+- **Pairing like an Apple TV.** Every pairing attempt shows a new random 4-digit code on the TV screen, and only iPhones that entered such a code can control the TV. The fixed PIN `1111` is gone on Android.
+- **Pairing survives restarts.** The server key no longer changes on every app start, so the iPhone stays paired after the box reboots.
+- **New main screen** in the TV app: a visible focus, settings with their current values, the text in English or Chinese.
+- **No debug web UI on Android.** Its port 8765 pressed buttons without pairing.
+
+Tested on a GTKing Pro TV box (Android 9). Each change is also proposed upstream as a [pull request](https://github.com/corvofeng/atv-core/pulls?q=author%3Avvzvlad). This fork has no prebuilt APK, and the [Download](#download) links below lead to upstream releases without these changes: build the APK with `scripts/build_android.sh`, see [Build from source](#build-from-source).
+
 <!-- TODO: replace the image below with a 15–30s screen recording:
      Control Center → Apple TV Remote → select device → navigate the TV / Mac.
      Save it as docs/images/en/demo.gif and swap the <img> src. -->
