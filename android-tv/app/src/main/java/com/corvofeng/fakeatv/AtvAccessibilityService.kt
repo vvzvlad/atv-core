@@ -23,7 +23,6 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -129,13 +128,15 @@ class AtvAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * A text field counts as focused when the on-screen keyboard (IME) window is shown
-     * and the input-focused node is editable. Changes go to the core, which tells the
-     * phone to raise, reload or drop its keyboard.
+     * A text field counts as focused when the input-focused node is editable. On Android TV
+     * input focus follows the D-pad highlight, so the phone keyboard comes up as soon as a
+     * field is highlighted, even while the TV keyboard is hidden. The IME window cannot be
+     * the signal: some boxes do not show it to accessibility even while it is up.
+     * Changes go to the core, which tells the phone to raise, reload or drop its keyboard.
      */
     private fun updateTextFocus(force: Boolean) {
         val report = synchronized(textLock) {
-            val field = if (isImeShown()) findEditableFocus() else null
+            val field = findEditableFocus()
             val key = field?.let { fieldKey(it) } ?: ""
             // A password is never sent to the phone (and is not readable anyway).
             val text = if (field == null || field.isPassword) "" else fieldText(field)
@@ -172,12 +173,6 @@ class AtvAccessibilityService : AccessibilityService() {
             reportedField = report.field
             reportedText = report.text
         }
-    }
-
-    private fun isImeShown(): Boolean = try {
-        windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
-    } catch (e: Exception) {
-        false
     }
 
     private fun findEditableFocus(): AccessibilityNodeInfo? =
