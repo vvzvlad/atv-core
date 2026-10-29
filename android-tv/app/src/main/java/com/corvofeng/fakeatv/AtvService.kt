@@ -383,6 +383,13 @@ class AtvService : Service(), AtvNative.Callback {
             showFallbackPairingCode(pin)
             return
         }
+        // A retried pair-setup shows a new code without a hide in between: drop an older code
+        // left in the notification and the app; the error path below puts the new one back.
+        if (fallbackPairingCode != null && fallbackPairingCode != pin) {
+            fallbackPairingCode = null
+            updateNotification(null)
+            broadcast("PairingCode", "hidden")
+        }
         a11y.showPairingPin(pin) {
             // The overlay failed after the core may have hidden this code already.
             if (shownPairingCode == pin) showFallbackPairingCode(pin)
