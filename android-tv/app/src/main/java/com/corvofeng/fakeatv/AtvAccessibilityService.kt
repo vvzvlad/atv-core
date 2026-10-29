@@ -113,9 +113,10 @@ class AtvAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * A text field counts as focused when the input-focused node is editable, as on an
-     * Apple TV, where focusing a field raises the phone keyboard. The TV's own keyboard is
-     * not required: some boxes show no IME window to accessibility even while it is up.
+     * A text field counts as focused when the input-focused node is editable. On Android TV
+     * input focus follows the D-pad highlight, so the phone keyboard comes up as soon as a
+     * field is highlighted, even while the TV keyboard is hidden. The IME window cannot be
+     * the signal: some boxes do not show it to accessibility even while it is up.
      * Changes go to the core, which tells the phone to raise, reload or drop its keyboard.
      */
     private fun updateTextFocus(force: Boolean) {
