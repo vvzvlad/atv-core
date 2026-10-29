@@ -17,7 +17,11 @@ This fork of [corvofeng/atv-core](https://github.com/corvofeng/atv-core) adds th
 - **New main screen** in the TV app: a visible focus, settings with their current values, the text in English or Chinese.
 - **No debug web UI on Android.** Its port 8765 pressed buttons without pairing.
 
-Tested on a GTKing Pro TV box (Android 9). Each change is also proposed upstream as a [pull request](https://github.com/corvofeng/atv-core/pulls?q=author%3Avvzvlad). This fork has no prebuilt APK, and the [Download](#download) links below lead to upstream releases without these changes: build the APK with `scripts/build_android.sh`, see [Build from source](#build-from-source).
+<img src="docs/images/en/fork_settings_cursor.png" width="720" alt="The TV app's main screen with the cursor turned on from the iPhone remote" />
+
+*The TV app's main screen; the arrow is the cursor, turned on with Power on the iPhone remote.*
+
+Tested on a GTKing Pro TV box (Android 9). Each change is also proposed upstream as a [pull request](https://github.com/corvofeng/atv-core/pulls?q=author%3Avvzvlad). Builds of this fork are on its [Releases](https://github.com/vvzvlad/atv-core/releases/latest) page; the [Download](#download) links below lead to upstream releases without these changes.
 
 <!-- TODO: replace the image below with a 15–30s screen recording:
      Control Center → Apple TV Remote → select device → navigate the TV / Mac.

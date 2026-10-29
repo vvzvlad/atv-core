@@ -65,6 +65,9 @@ jobs:
           fi
 
       - name: Build AppleTVRemote DMGs (arm64 & x86_64)
+        env:
+          # This fork signs with its own self-signed certificate.
+          CODESIGN_IDENTITY: FakeAtv box build
         run: |
           chmod +x ./scripts/*.sh
           ./scripts/build_dmg.sh all
