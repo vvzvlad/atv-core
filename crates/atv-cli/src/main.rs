@@ -43,7 +43,7 @@ fn usage() -> ! {
            --require-pairing              Admit only phones that paired with this server; use with --no-ui,\n\
                                           the debug web UI presses buttons without pairing\n\
            --pairing-dir <DIR>            Directory for the paired-phone list (default: memory only)\n\
-           --ip <IPV4>                    Local IPv4 to advertise (auto-detected if omitted)\n\
+           --ip <IPV4>                    Local IPv4 shown in logs (auto-detected if omitted)\n\
            --mouse                        Initial mode: Trackpad mouse (default on macOS)\n\
            --direction, --dpad            Initial mode: Direction keys (D-pad)\n\
            --idle, --preview              Initial mode: Trackpad idle (preview trajectory only)\n\
